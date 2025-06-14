@@ -5,11 +5,13 @@ import PageHeader from '../components/PageHeader.astro';
 
 <Layout title="NCA Dino Game">
     <PageHeader />
-    <main class="mx-auto px-2 py-8" style="max-width: 800px; overflow-x: hidden;">
+    <main class="mx-auto px-2 py-8" style="max-width: 100%; overflow-x: hidden;">
         <h1 class="text-3xl font-bold mb-4 text-center">🦕 NCA Dino Game</h1>
         
         <div class="jump-instruction">
-            <strong>🎮 Controls:</strong> SPACEBAR to Jump, B to throw Bombs! 💣
+            <strong>🎮 Controls:</strong> 
+            <span class="desktop-controls">SPACEBAR to Jump, B to throw Bombs! 💣</span>
+            <span class="mobile-controls">TAP anywhere to Jump, Double-tap for Bombs! 💣</span>
         </div>
         
         
@@ -37,20 +39,34 @@ import PageHeader from '../components/PageHeader.astro';
         background-color: white;
         border: 3px solid #333;
         border-radius: 8px;
-        width: 768px;
+        /* Dynamic width/height set by JavaScript based on selected model */
+        width: 768px;  /* Default, will be overridden */
         height: 240px;
         overflow: hidden;
-        max-width: 100%;
+        max-width: calc(100vw - 20px);
         box-sizing: border-box;
+        /* Prevent unwanted touch gestures on the game area */
+        touch-action: manipulation;
     }
     
-    /* Mobile responsive scaling */
-    @media (max-width: 800px) {
+    /* Responsive behavior - no more forced scaling since we select appropriate model size */
+    @media (max-width: 600px) {
         .game-area {
-            margin: 20px 10px;
-            transform-origin: center;
-            /* Scale to fit mobile screens while maintaining aspect ratio */
-            transform: scale(calc(min(100vw - 20px, 768px) / 768));
+            margin: 10px auto;
+            /* JavaScript will set appropriate dimensions for narrow screens */
+        }
+        
+        /* Ensure mobile browsers don't auto-zoom on touch */
+        body {
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
+        }
+    }
+    
+    /* Extra small devices */
+    @media (max-width: 400px) {
+        .game-area {
+            margin: 5px auto;
         }
     }
     .nca-canvas {
@@ -156,6 +172,20 @@ import PageHeader from '../components/PageHeader.astro';
         border-left: 4px solid #ff9800;
         text-align: center;
         font-size: 18px;
+    }
+    
+    /* Control instructions responsive display */
+    .mobile-controls {
+        display: none;
+    }
+    
+    @media (max-width: 800px) {
+        .desktop-controls {
+            display: none;
+        }
+        .mobile-controls {
+            display: inline;
+        }
     }
     .debug-window {
         background-color: #000;
@@ -351,23 +381,18 @@ import PageHeader from '../components/PageHeader.astro';
             this.debugWindow = document.getElementById('debugWindow');
             this.debugToggleBtn = document.getElementById('debugToggleBtn');
             
-            // Game area dimensions
-            this.gameWidth = 768;  // 192 * 4 pixels
-            this.gameHeight = 240; // 60 * 4 pixels (reduced from 320px to make less tall)
-            this.gameArea.style.width = `${this.gameWidth}px`;
-            this.gameArea.style.height = `${this.gameHeight}px`;
-            
-            // NCA model parameters (will be set based on selection)
-            this.selectedModelSize = 256;  // Default to 256px
-            this.modelWidth = 256;  // NCA model size
-            this.width = 192;       // Viewport width in NCA pixels  
-            this.height = 32;       // NCA height in pixels
+            // Set essential parameters first
             this.channels = 16;
             this.pixelScale = 4;    // 4x scaling for bigger visuals!
             this.fireRate = 0.5;
             
-            // Enable adaptive sparse optimization (fire + alive mask)
-            this.useAdaptiveSparse = true;
+            // Dynamic model selection based on screen size
+            this.detectOptimalModelSize();
+            
+            // Game area dimensions (set after model selection and pixelScale)
+            this.updateGameAreaDimensions();
+            
+            // NCA model parameters (selectedModelSize, modelWidth, width, height, useAdaptiveSparse set by detectOptimalModelSize())
             
             // Native ONNX tensors
             this.currentState = null;
@@ -1413,6 +1438,49 @@ import PageHeader from '../components/PageHeader.astro';
             }
         }
         
+        detectOptimalModelSize() {
+            // Get available screen width
+            const screenWidth = window.innerWidth;
+            const availableWidth = Math.min(screenWidth * 0.9, screenWidth - 40); // 90% of screen or screen minus padding
+            
+            console.log(`Screen width: ${screenWidth}px, Available width: ${availableWidth}px`);
+            
+            // Model size decision logic
+            if (availableWidth >= 600) {
+                // Wide screen: Use 256px model with wide viewport
+                this.selectedModelSize = 256;
+                this.modelWidth = 256;
+                this.width = 192;  // Wide viewport (192 NCA pixels)
+                this.height = 32;
+                this.useAdaptiveSparse = true;  // Use optimized 256px adaptive sparse model
+                console.log('📱 Selected 256px model for wide screen (with adaptive sparse)');
+            } else {
+                // Narrow screen: Use 128px model with narrow viewport  
+                this.selectedModelSize = 128;
+                this.modelWidth = 128;
+                this.width = 96;   // Narrow viewport (96 NCA pixels)
+                this.height = 32;
+                this.useAdaptiveSparse = true;  // Now we have 128px adaptive sparse model too!
+                console.log('📱 Selected 128px model for narrow screen (with adaptive sparse)');
+            }
+        }
+        
+        updateGameAreaDimensions() {
+            // Calculate game area dimensions based on selected model
+            this.gameWidth = this.width * this.pixelScale;  // viewport width * 4px scale
+            this.gameHeight = 240; // Keep height consistent
+            
+            // Update DOM elements
+            this.gameArea.style.width = `${this.gameWidth}px`;
+            this.gameArea.style.height = `${this.gameHeight}px`;
+            
+            // Update canvas size (using this.canvas, not this.ncaCanvas)
+            this.canvas.width = this.width * this.pixelScale;
+            this.canvas.height = this.height * this.pixelScale;
+            
+            console.log(`🎮 Game area: ${this.gameWidth}x${this.gameHeight}px (${this.width}x${this.height} NCA pixels)`);
+        }
+        
         async loadModel() {
             try {
                 console.log(`Loading ${this.selectedModelSize}px NCA model...`);
@@ -1456,7 +1524,7 @@ import PageHeader from '../components/PageHeader.astro';
                         } : {}; // No providers = auto selection
                         
                         const modelUrl = this.useAdaptiveSparse 
-                            ? `/nca_adaptive_sparse_model.onnx?t=${Date.now()}`
+                            ? `/nca_adaptive_sparse_model${this.selectedModelSize === 128 ? '_128px' : ''}.onnx?t=${Date.now()}`
                             : `/nca_model_${this.selectedModelSize}px.onnx?t=${Date.now()}`;
                         this.session = await ort.InferenceSession.create(modelUrl, sessionOptions);
                         
