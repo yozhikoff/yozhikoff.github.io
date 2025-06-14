@@ -255,117 +255,12 @@ import PageHeader from '../components/PageHeader.astro';
         document.head.appendChild(script);
     }
     
-    function initializeGame() {
+    async function initializeGame() {
         console.log('ONNX Runtime available:', window.ort);
-    
-    // 🚀 MONKEY-PATCH ONNX TENSOR WITH MULTI-DIMENSIONAL ACCESS!
-    
-    // Calculate strides for tensor shape [batch, channels, height, width]
-    ort.Tensor.prototype.calculateStrides = function() {
-        if (!this._strides) {
-            const shape = this.dims;
-            this._strides = new Array(shape.length);
-            this._strides[shape.length - 1] = 1;
-            for (let i = shape.length - 2; i >= 0; i--) {
-                this._strides[i] = this._strides[i + 1] * shape[i + 1];
-            }
-        }
-        return this._strides;
-    };
-    
-    // Get value at [batch, channel, y, x]
-    ort.Tensor.prototype.get = function(b, c, y, x) {
-        const strides = this.calculateStrides();
-        const index = b * strides[0] + c * strides[1] + y * strides[2] + x * strides[3];
-        return this.data[index];
-    };
-    
-    // Set value at [batch, channel, y, x]
-    ort.Tensor.prototype.set = function(b, c, y, x, value) {
-        const strides = this.calculateStrides();
-        const index = b * strides[0] + c * strides[1] + y * strides[2] + x * strides[3];
-        this.data[index] = value;
-    };
-    
-    // Set entire channel to a value
-    ort.Tensor.prototype.setChannel = function(b, c, value) {
-        const [batch, channels, height, width] = this.dims;
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                this.set(b, c, y, x, value);
-            }
-        }
-    };
-    
-    // Set vertical column in a channel
-    ort.Tensor.prototype.setColumn = function(b, c, x, value) {
-        const [batch, channels, height, width] = this.dims;
-        for (let y = 0; y < height; y++) {
-            this.set(b, c, y, x, value);
-        }
-    };
-    
-    // Fill entire tensor with value
-    ort.Tensor.prototype.fill = function(value) {
-        this.data.fill(value);
-    };
-    
-    // Copy from another tensor
-    ort.Tensor.prototype.copyFrom = function(otherTensor) {
-        if (this.data.length !== otherTensor.data.length) {
-            throw new Error('Tensor size mismatch');
-        }
-        this.data.set(otherTensor.data);
-    };
-    
-    // Resize tensor by creating new one and copying data
-    ort.Tensor.prototype.resize = function(newWidth) {
-        const [batchSize, channels, height, oldWidth] = this.dims;
-        const newData = new Float32Array(batchSize * channels * height * newWidth);
-        const newTensor = new ort.Tensor(this.type, newData, [batchSize, channels, height, newWidth]);
         
-        // Copy existing data (batch is always 0 for our use case)
-        const batch = 0;
-        const copyWidth = Math.min(oldWidth, newWidth);
-        
-        for (let c = 0; c < channels; c++) {
-            for (let y = 0; y < height; y++) {
-                for (let x = 0; x < copyWidth; x++) {
-                    const value = this.get(batch, c, y, x);
-                    newTensor.set(batch, c, y, x, value);
-                }
-            }
-        }
-        
-        return newTensor;
-    };
-    
-    // Trim tensor from left side
-    ort.Tensor.prototype.trimLeft = function(trimAmount) {
-        const [batchSize, channels, height, oldWidth] = this.dims;
-        const newWidth = oldWidth - trimAmount;
-        const newData = new Float32Array(batchSize * channels * height * newWidth);
-        const newTensor = new ort.Tensor(this.type, newData, [batchSize, channels, height, newWidth]);
-        
-        // Copy remaining data (batch is always 0 for our use case)
-        const batch = 0;
-        
-        for (let c = 0; c < channels; c++) {
-            for (let y = 0; y < height; y++) {
-                for (let x = 0; x < newWidth; x++) {
-                    const value = this.get(batch, c, y, x + trimAmount);
-                    newTensor.set(batch, c, y, x, value);
-                }
-            }
-        }
-        
-        return newTensor;
-    };
-    
-    // Get tensor info string
-    ort.Tensor.prototype.getInfo = function() {
-        return `[${this.dims.join(', ')}]`;
-    };
+        // Import and initialize ONNX extensions
+        const { initializeONNXExtensions } = await import('../utils/onnx-extensions.js');
+        initializeONNXExtensions();
 
     class NCADinoGame {
         constructor() {
@@ -474,17 +369,8 @@ import PageHeader from '../components/PageHeader.astro';
             this.cactusBoundingBoxes = [];
             this.dinoBoundingBoxes = []; // Array of dino bounding boxes (head + body)
             
-            // Bomb system
-            this.bombs = []; // Array of active bombs
-            this.explosions = []; // Array of active explosions for visual effects
-            this.destroyedAreas = new Set(); // Track destroyed terrain coordinates as "worldX,y" strings
-            this.bombCooldown = 200; // 1 second cooldown between bombs
-            this.lastBombTime = 0;
-            this.bombThrowSpeed = 235; // Horizontal speed in pixels/sec
-            this.bombThrowHeight = -2; // Initial upward velocity
-            this.bombGravity = 82.8; // Gravity for bomb arc
-            this.explosionRadius = 20; // Explosion radius in NCA pixels (increased to destroy full cacti!)
-            this.explosionDuration = 250; // Explosion visual effect duration in ms (super fast!)
+            // Initialize bomb system (imported module)
+            this.initializeBombSystem();
             
             // Cloud system
             this.clouds = []; // Array of clouds in the sky
@@ -532,6 +418,12 @@ import PageHeader from '../components/PageHeader.astro';
             this.updateDino(0);
             
             console.log('🚀 Enhanced NCA Dino Game initialized!');
+        }
+        
+        async initializeBombSystem() {
+            // Import and initialize bomb system
+            const { BombSystem } = await import('../systems/bomb-system.js');
+            this.bombSystem = new BombSystem(this);
         }
         
         applyDinoSize() {
@@ -600,7 +492,7 @@ import PageHeader from '../components/PageHeader.astro';
                     }
                 } else if (e.code === 'KeyB' && this.gameState === 'PLAYING') {
                     e.preventDefault();
-                    this.throwBomb();
+                    this.bombSystem?.throwBomb();
                 }
             });
             
@@ -683,63 +575,6 @@ import PageHeader from '../components/PageHeader.astro';
             }
         }
         
-        throwBomb() {
-            const now = performance.now();
-            const timeSinceLastBomb = now - this.lastBombTime;
-            
-            // Check cooldown
-            if (timeSinceLastBomb < this.bombCooldown) {
-                console.log(`💣 Bomb on cooldown! ${((this.bombCooldown - timeSinceLastBomb) / 1000).toFixed(1)}s remaining`);
-                return;
-            }
-            
-            // Calculate bomb starting position (ahead of dino)
-            const dinoGameX = this.gameWidth * this.dinoPosition;
-            const dinoGameY = this.gameHeight - ((this.height - 1 - this.dinoGroundY) * this.pixelScale) - ((this.dinoGroundY - this.dinoY) * this.pixelScale) - this.dinoHeight;
-            
-            // Create new bomb object - FIXED positioning!
-            const bomb = {
-                id: Date.now() + Math.random(), // Unique ID
-                x: dinoGameX + this.dinoWidth * 0.5, // Start closer to dino (middle of dino instead of edge)
-                y: dinoGameY + this.dinoHeight / 2, // Start at dino center height
-                velocityX: this.bombThrowSpeed, // Bomb's own velocity (don't add scroll speed here!)
-                velocityY: this.bombThrowHeight, // Initial upward velocity
-                worldX: this.worldOffset / this.pixelScale + (dinoGameX + this.dinoWidth) / this.pixelScale, // FIXED: Convert worldOffset to NCA coords
-                startTime: now,
-                active: true
-            };
-            
-            this.bombs.push(bomb);
-            this.lastBombTime = now;
-            
-            // Apply score penalty: -50 points (but can't exceed current score)
-            const currentBaseScore = Math.floor(this.worldOffset / this.pixelScale);
-            const maxAllowedPenalties = currentBaseScore;
-            this.scorePenalties = Math.min(this.scorePenalties + 50, maxAllowedPenalties);
-            
-            // Show penalty animation
-            this.showScorePenalty();
-            
-            console.log(`💣 BOMB THROWN! Score penalty: -50 (new score: ${this.score}). Screen: (${bomb.x.toFixed(1)}, ${bomb.y.toFixed(1)}), World NCA: ${bomb.worldX.toFixed(1)}, WorldOffset: ${this.worldOffset.toFixed(1)}, WindowStart: ${this.windowStartX}`);
-        }
-        
-        showScorePenalty() {
-            // Reset animation by hiding and showing again
-            this.scorePenalty.style.display = 'none';
-            this.scorePenalty.style.animation = 'none';
-            
-            // Force reflow to reset animation
-            this.scorePenalty.offsetHeight;
-            
-            // Show with animation
-            this.scorePenalty.style.display = 'block';
-            this.scorePenalty.style.animation = 'penalty-fade 2s ease-out forwards';
-            
-            // Hide after animation completes
-            setTimeout(() => {
-                this.scorePenalty.style.display = 'none';
-            }, 2000);
-        }
         
         updateDino(deltaTime) {
             // Cap delta time to prevent huge jumps (max 33ms = ~30fps minimum)
@@ -834,174 +669,7 @@ import PageHeader from '../components/PageHeader.astro';
             this.dinoBoundingBoxes = [headBox, bodyBox];
         }
         
-        updateBombs(deltaTime) {
-            if (!this.currentState) return;
-            
-            // Update all active bombs
-            for (let i = this.bombs.length - 1; i >= 0; i--) {
-                const bomb = this.bombs[i];
-                if (!bomb.active) continue;
-                
-                // Update bomb physics
-                bomb.x += bomb.velocityX * deltaTime;
-                bomb.y += bomb.velocityY * deltaTime;
-                bomb.velocityY += this.bombGravity * deltaTime; // Apply gravity
-                bomb.worldX += (bomb.velocityX / this.pixelScale) * deltaTime; // FIXED: Update world position in NCA coordinates
-                
-                // Check if bomb hits a cactus during flight!
-                if (this.checkBombCactusCollision(bomb)) {
-                    console.log(`💥 BOMB HIT CACTUS MID-FLIGHT!`);
-                    this.explodeBomb(bomb);
-                    this.bombs.splice(i, 1); // Remove bomb
-                    continue; // Skip ground check since bomb already exploded
-                }
-                
-                // Check if bomb hits ground (NCA terrain level)
-                const bombNCAY = this.gameHeight - bomb.y;
-                const groundLevelY = this.gameHeight - ((this.height - 1 - this.dinoGroundY) * this.pixelScale);
-                
-                // Check if bomb is off-screen or hits ground
-                if (bomb.x > this.gameWidth + 100 || bomb.y > groundLevelY) {
-                    // BOOM! Explode the bomb
-                    this.explodeBomb(bomb);
-                    this.bombs.splice(i, 1); // Remove bomb
-                }
-            }
-        }
         
-        checkBombCactusCollision(bomb) {
-            // Create bomb bounding box for collision detection
-            const bombSize = 12; // Bomb collision size in pixels
-            const bombBox = {
-                x: bomb.x - bombSize/2,
-                y: bomb.y - bombSize/2,
-                width: bombSize,
-                height: bombSize
-            };
-            
-            // Convert bomb position to canvas coordinates for cactus collision
-            const bombCanvasY = bomb.y - (this.gameHeight - this.canvas.height);
-            const bombCanvasBox = {
-                x: bomb.x,
-                y: bombCanvasY,
-                width: bombSize,
-                height: bombSize
-            };
-            
-            // Check collision with all cactus bounding boxes
-            for (const cactus of this.cactusBoundingBoxes) {
-                if (this.boundingBoxesCollide(bombCanvasBox, cactus)) {
-                    console.log(`💥 Bomb collision with cactus at (${cactus.x}, ${cactus.y})`);
-                    return true;
-                }
-            }
-            return false;
-        }
-        
-        updateExplosions(deltaTime) {
-            // Update all active explosions
-            for (let i = this.explosions.length - 1; i >= 0; i--) {
-                const explosion = this.explosions[i];
-                if (!explosion.active) continue;
-                
-                const now = performance.now();
-                const elapsed = now - explosion.startTime;
-                
-                // Remove expired explosions
-                if (elapsed >= explosion.duration) {
-                    this.explosions.splice(i, 1);
-                }
-            }
-        }
-        
-        explodeBomb(bomb) {
-            if (!this.currentState) return;
-            
-            // SIMPLIFIED APPROACH: Use bomb's current screen position to find terrain location
-            const bombScreenX = bomb.x; // Current screen X position in pixels
-            const bombNCAX = Math.round(bombScreenX / this.pixelScale); // FIXED: Round instead of floor for better accuracy
-            
-            // Find where this screen position maps to in the terrain array
-            const viewStartX = Math.floor(this.worldOffset / this.pixelScale); // Current view start in NCA coordinates
-            const visibleStartX = Math.max(0, viewStartX - this.windowStartX); // Position in visible terrain
-            const terrainX = visibleStartX + bombNCAX; // FIXED: Position in terrain array
-            
-            const explosionNCAX = terrainX + 3; // FIXED: Move 3 pixels to the right
-            const explosionNCAY = this.dinoGroundY; // Explode at ground level
-            
-            console.log(`💥 FIXED EXPLOSION: BombScreen=${bombScreenX.toFixed(1)}px, BombNCA=${bombNCAX}, ViewStart=${viewStartX}, VisibleStart=${visibleStartX}, TerrainX=${terrainX}, WindowStart=${this.windowStartX}, FinalNCA=(${explosionNCAX}, ${explosionNCAY}), VisualAt=(${explosionNCAX}, ${explosionNCAY})`);
-            
-            // Zero out all channels within explosion radius
-            const batch = 0;
-            for (let deltaY = -this.explosionRadius; deltaY <= this.explosionRadius; deltaY++) {
-                for (let deltaX = -this.explosionRadius; deltaX <= this.explosionRadius; deltaX++) {
-                    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-                    if (distance <= this.explosionRadius) {
-                        const targetX = explosionNCAX + deltaX;
-                        const targetY = explosionNCAY + deltaY;
-                        
-                        // Check bounds
-                        if (targetX >= 0 && targetX < this.currentWidth && 
-                            targetY >= 0 && targetY < this.height) {
-                            
-                            // Zero ALL channels (complete terrain destruction!)
-                            for (let channel = 0; channel < this.channels; channel++) {
-                                this.currentState.set(batch, channel, targetY, targetX, 0.0);
-                            }
-                            
-                            // Track destroyed area for cactus removal using WORLD coordinates
-                            const worldX = this.windowStartX + targetX;
-                            this.destroyedAreas.add(`${worldX},${targetY}`);
-                            
-                            // Debug log terrain destruction
-                            if (deltaX === 0 && deltaY === 0) {
-                                console.log(`💥 CENTER DESTROYED at NCA (${targetX}, ${targetY})`);
-                            }
-                            
-                        } else {
-                        }
-                    }
-                }
-            }
-            
-            console.log(`💥 Terrain destroyed in ${this.explosionRadius} NCA pixel radius!`);
-            
-            // Create explosion visual effect using bomb's SCREEN position directly!
-            // Generate random explosion pattern
-            const explosionPixels = [];
-            const numPixels = Math.floor(this.explosionRadius * this.explosionRadius * 4); // Much denser explosion particles!
-            
-            for (let i = 0; i < numPixels; i++) {
-                // Random position within explosion radius
-                const angle = Math.random() * 2 * Math.PI;
-                const distance = Math.random() * this.explosionRadius;
-                const deltaX = Math.cos(angle) * distance;
-                const deltaY = Math.sin(angle) * distance;
-                
-                // Random color from explosion palette
-                const colorChoices = [
-                    'red', 'orange', 'yellow', 'black', 'gray'
-                ];
-                const baseColor = colorChoices[Math.floor(Math.random() * colorChoices.length)];
-                
-                explosionPixels.push({
-                    deltaX: deltaX,
-                    deltaY: deltaY,
-                    baseColor: baseColor,
-                    jitterSeed: Math.random() // For color jitter animation
-                });
-            }
-            
-            const explosion = {
-                worldX: bomb.worldX, // Store WORLD coordinates so explosion moves with screen!
-                screenY: bomb.y, // Y doesn't scroll, so screen Y is fine
-                pixels: explosionPixels,
-                startTime: performance.now(),
-                duration: this.explosionDuration,
-                active: true
-            };
-            this.explosions.push(explosion);
-        }
         
         detectCactusBoundingBoxes() {
             if (!this.currentState) return;
@@ -1029,7 +697,7 @@ import PageHeader from '../components/PageHeader.astro';
                 for (let y = minY; y <= maxY; y++) {
                     // Check if this position was destroyed (using world coordinates)
                     const worldX = this.windowStartX + terrainX;
-                    if (this.destroyedAreas.has(`${worldX},${y}`)) {
+                    if (this.bombSystem && this.bombSystem.isAreaDestroyed(worldX, y)) {
                         continue; // Skip destroyed areas
                     }
                     
@@ -1215,111 +883,7 @@ import PageHeader from '../components/PageHeader.astro';
             }
         }
         
-        drawBombs() {
-            // Draw all active bombs
-            for (const bomb of this.bombs) {
-                if (!bomb.active) continue;
-                
-                // Use bomb's screen coordinates directly (they're already in screen space)
-                const screenX = bomb.x;
-                const screenY = bomb.y;
-                
-                // Only draw if on screen
-                if (screenX >= -20 && screenX <= this.gameWidth + 20 && 
-                    screenY >= -20 && screenY <= this.gameHeight + 20) {
-                    
-                    // Convert to canvas coordinates (bombs are in game area coordinates)
-                    const canvasX = screenX;
-                    const canvasY = screenY - (this.gameHeight - this.canvas.height);
-                    
-                    // Draw bomb as emoji 💣 (50% larger!)
-                    this.ctx.font = '24px Arial';
-                    this.ctx.textAlign = 'center';
-                    this.ctx.textBaseline = 'middle';
-                    this.ctx.fillText('💣', canvasX, canvasY);
-                    
-                    // Debug info if debug boxes are enabled
-                    if (this.showDebugBoxes) {
-                        this.ctx.fillStyle = '#000000';
-                        this.ctx.font = '10px Arial';
-                        this.ctx.textAlign = 'center';
-                        this.ctx.fillText(
-                            `(${bomb.worldX.toFixed(0)})`,
-                            canvasX,
-                            canvasY - 15
-                        );
-                    }
-                }
-            }
-        }
         
-        drawExplosions() {
-            // Draw all active explosions as random scattered pixels
-            for (const explosion of this.explosions) {
-                if (!explosion.active) continue;
-                
-                const now = performance.now();
-                const elapsed = now - explosion.startTime;
-                const progress = elapsed / explosion.duration; // 0 to 1
-                
-                // Convert world coordinates to current screen position - explosion moves with terrain!
-                const explosionScreenX = (explosion.worldX * this.pixelScale) - this.worldOffset;
-                const explosionScreenY = explosion.screenY;
-                
-                // Only draw if explosion center is somewhat visible
-                if (explosionScreenX >= -100 && explosionScreenX <= this.gameWidth + 100 && 
-                    explosionScreenY >= -100 && explosionScreenY <= this.gameHeight + 100) {
-                    
-                    // Convert to canvas coordinates
-                    const canvasX = explosionScreenX;
-                    const canvasY = explosionScreenY - (this.gameHeight - this.canvas.height);
-                    
-                    // Draw each random pixel
-                    for (const pixel of explosion.pixels) {
-                        // Apply pixel offset IN SCREEN COORDINATES (not NCA!)
-                        const pixelCanvasX = canvasX + (pixel.deltaX * this.pixelScale);
-                        const pixelCanvasY = canvasY + (pixel.deltaY * this.pixelScale);
-                        
-                        // Skip if pixel is off canvas
-                        if (pixelCanvasX < -this.pixelScale || pixelCanvasX > this.canvas.width + this.pixelScale || 
-                            pixelCanvasY < -this.pixelScale || pixelCanvasY > this.canvas.height + this.pixelScale) continue;
-                        
-                        // Calculate color with jitter animation
-                        const opacity = Math.max(0, 1 - progress); // Fade out over time
-                        const jitter = Math.sin((elapsed + pixel.jitterSeed * 1000) * 0.01) * 0.3; // Color jitter
-                        
-                        let color;
-                        switch (pixel.baseColor) {
-                            case 'red':
-                                const redJitter = 255 + jitter * 100;
-                                color = `rgba(${Math.max(150, Math.min(255, redJitter))}, 0, 0, ${opacity})`;
-                                break;
-                            case 'orange':
-                                const orangeR = 255 + jitter * 50;
-                                const orangeG = 100 + jitter * 100;
-                                color = `rgba(${Math.max(200, Math.min(255, orangeR))}, ${Math.max(50, Math.min(200, orangeG))}, 0, ${opacity})`;
-                                break;
-                            case 'yellow':
-                                const yellowIntensity = 255 + jitter * 100;
-                                color = `rgba(${Math.max(200, Math.min(255, yellowIntensity))}, ${Math.max(200, Math.min(255, yellowIntensity))}, 0, ${opacity})`;
-                                break;
-                            case 'black':
-                                const blackIntensity = 50 + jitter * 50;
-                                color = `rgba(${Math.max(0, Math.min(100, blackIntensity))}, ${Math.max(0, Math.min(100, blackIntensity))}, ${Math.max(0, Math.min(100, blackIntensity))}, ${opacity})`;
-                                break;
-                            case 'gray':
-                                const grayIntensity = 128 + jitter * 100;
-                                const grayValue = Math.max(80, Math.min(200, grayIntensity));
-                                color = `rgba(${grayValue}, ${grayValue}, ${grayValue}, ${opacity * 0.8})`;
-                                break;
-                        }
-                        
-                        this.ctx.fillStyle = color;
-                        this.ctx.fillRect(pixelCanvasX, pixelCanvasY, this.pixelScale, this.pixelScale);
-                    }
-                }
-            }
-        }
         
         updateClouds(deltaTime) {
             // Move existing clouds
@@ -1385,7 +949,7 @@ import PageHeader from '../components/PageHeader.astro';
             this.drawClouds();
             
             // Draw bombs
-            this.drawBombsOverlay();
+            this.bombSystem?.drawBombs(this.overlayCtx, this.gameWidth, this.gameHeight);
         }
         
         drawClouds() {
@@ -1405,38 +969,6 @@ import PageHeader from '../components/PageHeader.astro';
             this.overlayCtx.globalAlpha = 1.0; // Reset opacity
         }
         
-        drawBombsOverlay() {
-            // Draw all active bombs on the overlay (above NCA canvas)
-            for (const bomb of this.bombs) {
-                if (!bomb.active) continue;
-                
-                const screenX = bomb.x;
-                const screenY = bomb.y;
-                
-                // Only draw if on screen
-                if (screenX >= -20 && screenX <= this.gameWidth + 20 && 
-                    screenY >= -20 && screenY <= this.gameHeight + 20) {
-                    
-                    // Draw bomb as emoji 💣
-                    this.overlayCtx.font = '24px Arial';
-                    this.overlayCtx.textAlign = 'center';
-                    this.overlayCtx.textBaseline = 'middle';
-                    this.overlayCtx.fillText('💣', screenX, screenY);
-                    
-                    // Debug info if debug boxes are enabled
-                    if (this.showDebugBoxes) {
-                        this.overlayCtx.fillStyle = '#000000';
-                        this.overlayCtx.font = '10px Arial';
-                        this.overlayCtx.textAlign = 'center';
-                        this.overlayCtx.fillText(
-                            `(${bomb.worldX.toFixed(0)})`,
-                            screenX,
-                            screenY - 15
-                        );
-                    }
-                }
-            }
-        }
         
         detectOptimalModelSize() {
             // Get available screen width
@@ -1924,7 +1456,7 @@ import PageHeader from '../components/PageHeader.astro';
             }
             
             // Draw explosions on NCA canvas
-            this.drawExplosions();
+            this.bombSystem?.drawExplosions(this.ctx, this.gameWidth, this.gameHeight, this.worldOffset, this.pixelScale);
             
             // Detect cactus bounding boxes and draw debug visualization
             this.detectCactusBoundingBoxes();
@@ -2075,8 +1607,8 @@ Providers: ${this.backendInfo.providers.join(', ')}`;
                 }
                 
                 this.updateDino(deltaTime);
-                this.updateBombs(deltaTime);
-                this.updateExplosions(deltaTime);
+                this.bombSystem?.updateBombs(deltaTime);
+                this.bombSystem?.updateExplosions(deltaTime);
                 this.updateClouds(deltaTime);
                 this.renderState();
                 this.renderGameAreaOverlay(); // Draw bombs and clouds over the game area
@@ -2170,13 +1702,11 @@ Providers: ${this.backendInfo.providers.join(', ')}`;
             this.jumpStartWorldX = 0;
             
             // Clear all game objects
-            this.bombs = [];
-            this.explosions = [];
+            this.bombSystem?.reset();
             this.clouds = [];
             this.cactusBounds = [];
             this.cactusBoundingBoxes = [];
             this.dinoBoundingBoxes = [];
-            this.destroyedAreas.clear();
             
             // Reset scroll speed
             this.currentScrollSpeed = 0;
@@ -2307,8 +1837,8 @@ Providers: ${this.backendInfo.providers.join(', ')}`;
                 }
                 
                 this.updateDino(deltaTime);
-                this.updateBombs(deltaTime);
-                this.updateExplosions(deltaTime);
+                this.bombSystem?.updateBombs(deltaTime);
+                this.bombSystem?.updateExplosions(deltaTime);
                 this.updateClouds(deltaTime);
                 this.renderState();
                 this.renderGameAreaOverlay(); // Draw bombs and clouds over the game area
