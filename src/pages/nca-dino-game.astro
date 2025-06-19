@@ -200,6 +200,7 @@ import PageHeader from '../components/PageHeader.astro';
         white-space: pre;
         line-height: 1.4;
     }
+    
 </style>
 
 <script>
@@ -302,16 +303,26 @@ import PageHeader from '../components/PageHeader.astro';
             this.gameStartTime = 0;
             this.bombTutorialShown = false;
             
-            // Synchronization parameters
+            // Synchronization parameters (model-dependent)
             this.baseScrollSpeed = 55;  // Initial scrolling speed
             this.currentScrollSpeed = 0;
             this.ncaStepsPerSecond = 80; // Increased from 30
-            this.generationTargetPercent = 0.75;
             this.trimThreshold = 64;
             
-            // PID controller for scroll speed
+            // Model-dependent constants
+            if (this.selectedModelSize === 256) {
+                // 256px model: 15% dino position, 80% generation edge
+                this.dinoPosition = 0.15;
+                this.generationTargetPercent = 0.80;
+            } else {
+                // 128px model: 10% dino position, 90% generation edge  
+                this.dinoPosition = 0.10;
+                this.generationTargetPercent = 0.90;
+            }
+            
+            // PID controller for scroll speed (increased gains for better edge tracking)
             this.speedController = {
-                kP: 100, kI: 10, kD: 20,
+                kP: 150, kI: 15, kD: 25,  // Modest increase: +50% kP, +50% kI, +25% kD
                 integral: 0, lastError: 0,
                 maxSpeed: 200, minSpeed: -50
             };
@@ -325,7 +336,7 @@ import PageHeader from '../components/PageHeader.astro';
             this.lastStepTime = performance.now();
             
             // Dino game parameters (adjusted for taller game field)
-            this.dinoPosition = 0.15; // 15% of screen width
+            // dinoPosition set above based on model size
             // Ground surface is at row 27 (top of 5-cell thick ground: rows 27-31)
             this.dinoGroundY = 27; // Ground surface level in NCA pixels (0-based, so row 27)
             this.dinoY = this.dinoGroundY; // Current Y position in NCA pixels
@@ -425,6 +436,7 @@ import PageHeader from '../components/PageHeader.astro';
             const { BombSystem } = await import('../systems/bomb-system.js');
             this.bombSystem = new BombSystem(this);
         }
+        
         
         applyDinoSize() {
             // Apply the calculated dino size to the DOM element
@@ -615,6 +627,13 @@ import PageHeader from '../components/PageHeader.astro';
             // Calculate dino position: 15% of game width
             const dinoGameX = this.gameWidth * this.dinoPosition;
             const dinoPixelX = dinoGameX - (this.dinoCharacter.offsetWidth / 2);
+            
+            // NaN DETECTION: Critical fix for 3rd game curse
+            if (isNaN(dinoGameX) || isNaN(dinoPixelX) || isNaN(this.worldOffset)) {
+                console.error('🚨 NaN DETECTED in dino positioning! Emergency restart...');
+                this.restartGame();
+                return;
+            }
             
             // Convert NCA Y coordinate to game pixel coordinate
             // Ground surface is at NCA row 27, which corresponds to specific screen position
@@ -1230,7 +1249,10 @@ import PageHeader from '../components/PageHeader.astro';
         updateDynamicScrollSpeed(sync, deltaTime) {
             const error = sync.percentError;
             this.speedController.integral += error * deltaTime;
-            const derivative = (error - this.speedController.lastError) / deltaTime;
+            
+            // CRITICAL FIX: Prevent division by tiny deltaTime on mobile
+            const safeDeltaTime = Math.max(deltaTime, 0.001); // Minimum 1ms
+            const derivative = (error - this.speedController.lastError) / safeDeltaTime;
             
             const pidOutput = (
                 this.speedController.kP * error +
@@ -1243,6 +1265,16 @@ import PageHeader from '../components/PageHeader.astro';
                 this.speedController.minSpeed,
                 Math.min(this.speedController.maxSpeed, this.currentScrollSpeed)
             );
+            
+            // NaN DETECTION: Prevent corruption of scroll speed
+            if (isNaN(this.currentScrollSpeed) || isNaN(error) || isNaN(pidOutput)) {
+                console.error('🚨 NaN DETECTED in scroll speed calculation! Emergency reset...');
+                // Emergency reset to safe values
+                this.currentScrollSpeed = this.baseScrollSpeed;
+                this.speedController.integral = 0;
+                this.speedController.lastError = 0;
+                return;
+            }
             
             this.speedController.lastError = error;
             
@@ -1550,6 +1582,14 @@ Providers: ${this.backendInfo.providers.join(', ')}`;
                 } else if (this.gameState === 'PLAYING') {
                     // Normal gameplay - scrolling and physics
                     this.updateDynamicScrollSpeed(sync, deltaTime);
+                    
+                    // NaN PROTECTION: Prevent worldOffset corruption
+                    if (isNaN(this.currentScrollSpeed) || isNaN(deltaTime)) {
+                        console.error('🚨 NaN DETECTED before worldOffset update! Emergency restart...');
+                        this.restartGame();
+                        return;
+                    }
+                    
                     this.worldOffset += this.currentScrollSpeed * deltaTime;
                     
                     // Show bomb tutorial after 5 seconds
@@ -1708,9 +1748,13 @@ Providers: ${this.backendInfo.providers.join(', ')}`;
             this.cactusBoundingBoxes = [];
             this.dinoBoundingBoxes = [];
             
-            // Reset scroll speed
+            // Reset scroll speed and PID controller state
             this.currentScrollSpeed = 0;
             this.scrollSpeedEMA = this.baseScrollSpeed;
+            
+            // CRITICAL FIX: Reset PID controller state to prevent 3rd game curse
+            this.speedController.integral = 0;
+            this.speedController.lastError = 0;
             
             // Start intro sequence immediately
             this.gameState = 'INTRO';
@@ -1780,6 +1824,14 @@ Providers: ${this.backendInfo.providers.join(', ')}`;
                 } else if (this.gameState === 'PLAYING') {
                     // Normal gameplay - scrolling and physics
                     this.updateDynamicScrollSpeed(sync, deltaTime);
+                    
+                    // NaN PROTECTION: Prevent worldOffset corruption
+                    if (isNaN(this.currentScrollSpeed) || isNaN(deltaTime)) {
+                        console.error('🚨 NaN DETECTED before worldOffset update! Emergency restart...');
+                        this.restartGame();
+                        return;
+                    }
+                    
                     this.worldOffset += this.currentScrollSpeed * deltaTime;
                     
                     // Show bomb tutorial after 5 seconds
