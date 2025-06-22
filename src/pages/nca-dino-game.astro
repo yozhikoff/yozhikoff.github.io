@@ -28,6 +28,17 @@ import PageHeader from '../components/PageHeader.astro';
         </div>
         
         <div id="debugWindow" class="debug-window" style="display: none;"></div>
+        
+        <!-- Explanatory text -->
+        <div class="explanation-text">
+            <p>Inspired by the <a href="https://distill.pub/2020/growing-ca/" target="_blank" rel="noopener" class="link">Growing Neural Cellular Automata (NCA) paper</a> and the classic Chrome Dino game, meet the original "Dino in NCA-land"!</p>
+            
+            <p>Cellular Automata that are explicitly parametrised to depend only on the local neighbourhood can generalise extremely well to work beyond the training environment. Here, the infinite terrain for the Dino to run is not generated procedurally - it's a product of an endless evolution of the NCA that was originally trained to replicate a tiny piece of the environment.</p>
+            
+            <p>Interestingly, it also wasn't explicitly trained to regenerate after being destroyed by a bomb, but somehow emerged to have this property.</p>
+            
+            <p>I hope to write a proper blog post about this project; but for now - enjoy the adventure!</p>
+        </div>
     </main>
 </Layout>
 
@@ -164,6 +175,36 @@ import PageHeader from '../components/PageHeader.astro';
     .debug-toggle-btn:hover {
         background-color: #f0f0f0;
     }
+    .explanation-text {
+        background-color: #f8fafc;
+        padding: 20px;
+        border-radius: 8px;
+        margin: 20px auto;
+        max-width: 800px;
+        line-height: 1.6;
+        font-size: 16px;
+        color: #374151;
+    }
+    
+    .explanation-text p {
+        margin-bottom: 15px;
+    }
+    
+    .explanation-text p:last-child {
+        margin-bottom: 0;
+    }
+    
+    .explanation-text .link {
+        color: #4f46e5;
+        text-decoration: underline;
+        font-weight: 500;
+    }
+    
+    .explanation-text .link:hover {
+        color: #3730a3;
+        text-decoration: none;
+    }
+    
     .jump-instruction {
         background-color: #fff3e0;
         padding: 15px;
