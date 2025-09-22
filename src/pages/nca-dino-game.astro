@@ -260,7 +260,7 @@ import PageHeader from '../components/PageHeader.astro';
         // Check if we already reloaded once
         const hasReloaded = sessionStorage.getItem('sw-reloaded');
         
-        navigator.serviceWorker.register('/coi-serviceworker.js?v=2', { scope: '/nca-dino-game/' })
+        navigator.serviceWorker.register('/dino-game/coi-serviceworker.js?v=2', { scope: '/nca-dino-game/' })
             .then(registration => {
                 console.log('🚀 COI Service Worker registered successfully');
                 
@@ -301,7 +301,7 @@ import PageHeader from '../components/PageHeader.astro';
         console.log('ONNX Runtime available:', window.ort);
         
         // Import and initialize ONNX extensions
-        const { initializeONNXExtensions } = await import('../utils/onnx-extensions.js');
+        const { initializeONNXExtensions } = await import('../dino-game/onnx-extensions.js');
         initializeONNXExtensions();
 
     class NCADinoGame {
@@ -408,11 +408,11 @@ import PageHeader from '../components/PageHeader.astro';
             
             // Dino sprites
             this.dinoSprites = {
-                run1: '/dino_assets/DinoRun1.png',
-                run2: '/dino_assets/DinoRun2.png',
-                jump: '/dino_assets/DinoJump.png',
-                start: '/dino_assets/DinoStart.png',
-                dead: '/dino_assets/DinoDead.png'
+                run1: '/dino-game/assets/DinoRun1.png',
+                run2: '/dino-game/assets/DinoRun2.png',
+                jump: '/dino-game/assets/DinoJump.png',
+                start: '/dino-game/assets/DinoStart.png',
+                dead: '/dino-game/assets/DinoDead.png'
             };
             
             // Collision detection
@@ -429,13 +429,13 @@ import PageHeader from '../components/PageHeader.astro';
             this.cloudSpawnChance = 0.00125; // Chance per frame to spawn a cloud (increased spawn rate)
             this.maxClouds = 8; // Maximum number of clouds on screen
             this.cloudImage = new Image();
-            this.cloudImage.src = '/dino_assets/Cloud.png';
+            this.cloudImage.src = '/dino-game/assets/Cloud.png';
             this.cloudImageLoaded = false;
             this.cloudImage.onload = () => { this.cloudImageLoaded = true; };
             
             // Game Over image
             this.gameOverImage = new Image();
-            this.gameOverImage.src = '/dino_assets/GameOver.png';
+            this.gameOverImage.src = '/dino-game/assets/GameOver.png';
             this.gameOverImageLoaded = false;
             this.gameOverImage.onload = () => { this.gameOverImageLoaded = true; };
             
@@ -474,7 +474,7 @@ import PageHeader from '../components/PageHeader.astro';
         
         async initializeBombSystem() {
             // Import and initialize bomb system
-            const { BombSystem } = await import('../systems/bomb-system.js');
+            const { BombSystem } = await import('../dino-game/bomb-system.js');
             this.bombSystem = new BombSystem(this);
         }
         
@@ -841,7 +841,7 @@ import PageHeader from '../components/PageHeader.astro';
             
             // Show Game Over image if loaded
             if (this.gameOverImageLoaded) {
-                this.gameOverDisplay.innerHTML = `<img src="/dino_assets/GameOver.png" alt="Game Over" style="image-rendering: pixelated;">`;
+                this.gameOverDisplay.innerHTML = `<img src="/dino-game/assets/GameOver.png" alt="Game Over" style="image-rendering: pixelated;">`;
                 this.gameOverDisplay.style.display = 'block';
             } else {
                 // Fallback text
@@ -1115,9 +1115,9 @@ import PageHeader from '../components/PageHeader.astro';
                             executionProviders: config.providers
                         } : {}; // No providers = auto selection
                         
-                        const modelUrl = this.useAdaptiveSparse 
-                            ? `/nca_adaptive_sparse_model${this.selectedModelSize === 128 ? '_128px' : ''}.onnx?t=${Date.now()}`
-                            : `/nca_model_${this.selectedModelSize}px.onnx?t=${Date.now()}`;
+                        const modelUrl = this.useAdaptiveSparse
+                            ? `/dino-game/models/nca_adaptive_sparse_model${this.selectedModelSize === 128 ? '_128px' : ''}.onnx?t=${Date.now()}`
+                            : `/dino-game/models/nca_model_${this.selectedModelSize}px.onnx?t=${Date.now()}`;
                         this.session = await ort.InferenceSession.create(modelUrl, sessionOptions);
                         
                         // Store successful backend info
