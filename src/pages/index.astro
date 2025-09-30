@@ -14,13 +14,13 @@ import Layout from '../layouts/Layout.astro';
 				<p>
 					Hi! My name is Artem, I'm currently a PhD student at Heidelberg University, working on the intersection of AI and computational biology under the supervision of <a href="https://www.dkfz.de/en/AI-in-oncology/Employees_detailed/Moritz_Detail.html" class="text-indigo-600 hover:text-indigo-800 transition-colors underline decoration-1 underline-offset-2">Moritz Gerstung</a>. My current work is focused on using large-scale medical datasets to establish transformer-based models of disease risk prediction based on medical history. Previously I was working on image-based models for subtyping tumours of the central nervous system and designing Bayesian generative models for spatial transcriptomics data. In the previous life I was a chemist.
 				</p>
-				<br>				
+				<br>
 				<p>
 					More broadly, I'm interested in the common points between AI and biology - both ways - developing biology-inspired AI and using AI to build data-driven simulations of biological processes. I'm fascinated by complex systems and their emergent properties, such as evolution, repair and self-organization.
 				</p>
 				<br>
 				<p>
-					When not doing research, I enjoy astrophotography, scuba diving, reading science fiction, <span 
+					When not doing research, I enjoy astrophotography, scuba diving, reading science fiction, <span
 						class="relative"
 						onmouseenter="this.querySelector('.popup').style.opacity='1'; this.querySelector('.popup').style.transform='translateY(-8px)'"
 						onmouseleave="this.querySelector('.popup').style.opacity='0'; this.querySelector('.popup').style.transform='translateY(0)'"
@@ -30,7 +30,7 @@ import Layout from '../layouts/Layout.astro';
 							🐾 nyaa~! ✨
 						</span>
 					</span><span
-						class="relative" 
+						class="relative"
 						onmouseenter="this.querySelector('.popup').style.opacity='1'; this.querySelector('.popup').style.transform='translateY(-8px)'"
 						onmouseleave="this.querySelector('.popup').style.opacity='0'; this.querySelector('.popup').style.transform='translateY(0)'"
 					>
@@ -44,19 +44,24 @@ import Layout from '../layouts/Layout.astro';
 			</div>
 		</section>
 
-		<section  class="mt-2 -pt-10">
-			<h2 class="text-2xl font-normal mb-4 text-indigo-800">Recent Work</h2>
-			<div class="space-y-4">
-				<div class="border-l-2 border-indigo-200 pl-6 py-3">
-					<h3 class="text-lg font-medium text-gray-800">Generative Transformers for Disease History</h3>
-					<p class="text-gray-600 text-sm mb-2">European Bioinformatics Institute • 2024 - present </p>
-					<p class="text-gray-700">Designing custom transformer models that estimate future disease risk based on medical history. </p>
-				</div>
-				
-				<div class="border-l-2 border-indigo-200 pl-6 py-3">
-					<h3 class="text-lg font-medium text-gray-800">Brain Tumour Classification</h3>
-					<p class="text-gray-600 text-sm mb-2">German Cancer Research Center • 2022 - present</p>
-					<p class="text-gray-700">Developing SOTA models for computational histopathology of brain tumours in a collaboration across seven countries, targeting direct clinical application.</p>
+		<section class="bg-indigo-50 border border-indigo-200 rounded-lg p-5">
+			<div class="flex items-center gap-2 mb-3">
+				<span class="text-xs text-indigo-700 font-medium border border-indigo-300 px-2 py-0.5 rounded">NEW</span>
+				<h2 class="text-2xl font-normal text-indigo-800">Recent Publications</h2>
+			</div>
+			<div class="bg-white rounded-md p-4 border border-indigo-100">
+				<h3 class="text-lg font-medium text-gray-800 mb-2">Learning the natural history of human disease with generative transformers</h3>
+				<p class="text-gray-600 text-sm mb-2"><strong>Shmatko, A.</strong>, Jung, A.W., Gaurav, K., Brunak, S., Mortensen, L.H., Birney, E., Fitzgerald, T., Gerstung, M.</p>
+				<p class="text-gray-600 text-sm mb-3">
+					<em>Nature</em> • 2025 • DOI: 10.1038/s41586-025-09529-3
+				</p>
+				<div class="flex gap-3">
+					<a href="https://doi.org/10.1038/s41586-025-09529-3" target="_blank" rel="noopener noreferrer" class="text-sm text-indigo-600 hover:text-indigo-800 underline decoration-1 underline-offset-2">
+						Read Paper
+					</a>
+					<a href="https://github.com/gerstung-lab/Delphi" target="_blank" rel="noopener noreferrer" class="text-sm text-gray-600 hover:text-gray-800 underline decoration-1 underline-offset-2">
+						View Code
+					</a>
 				</div>
 			</div>
 		</section>
