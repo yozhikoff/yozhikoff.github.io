@@ -3,7 +3,7 @@ import Layout from '../layouts/Layout.astro';
 import PageHeader from '../components/PageHeader.astro';
 ---
 
-<Layout title="NCA Clock" description="A neural cellular automaton clock — each digit is a tiny 32×32 grid that regrows itself in real time">
+<Layout title="NCA Clock" description="A neural cellular automaton clock - each digit is a tiny 32×32 grid that regrows itself in real time">
     <PageHeader />
     <main class="mx-auto px-0 sm:px-2 py-4" style="max-width: 100%; overflow-x: hidden;">
         <h1 class="text-3xl font-bold mb-6 text-center">NCA Clock</h1>
@@ -11,14 +11,14 @@ import PageHeader from '../components/PageHeader.astro';
         <div class="clock-stage">
             <div class="clock-card">
                 <div id="clock">
-                    <canvas id="d0"></canvas>
-                    <canvas id="d1"></canvas>
+                    <canvas id="d0" width="32" height="32"></canvas>
+                    <canvas id="d1" width="32" height="32"></canvas>
                     <span class="sep">:</span>
-                    <canvas id="d2"></canvas>
-                    <canvas id="d3"></canvas>
+                    <canvas id="d2" width="32" height="32"></canvas>
+                    <canvas id="d3" width="32" height="32"></canvas>
                     <span class="sep">:</span>
-                    <canvas id="d4"></canvas>
-                    <canvas id="d5"></canvas>
+                    <canvas id="d4" width="32" height="32"></canvas>
+                    <canvas id="d5" width="32" height="32"></canvas>
                 </div>
             </div>
 
@@ -503,10 +503,19 @@ import PageHeader from '../components/PageHeader.astro';
 
     function handleTransitions() {
         if (config.z_dim === 0 || zPadManual) return;
+        let anyChanged = false;
         for (let d = 0; d < N_DIGITS; d++) {
             if (currentLabels[d] !== prevLabels[d]) {
                 zVecs[d] = sampleZ(config.z_dim);
+                anyChanged = true;
             }
+        }
+        // Cancel any in-flight drift interpolation — otherwise the next step
+        // would lerp zVecs back to the pre-transition target, wiping the
+        // fresh sample we just assigned.
+        if (anyChanged && zTo) {
+            zTo = null;
+            zInterpStep = 0;
         }
     }
 
@@ -605,14 +614,21 @@ import PageHeader from '../components/PageHeader.astro';
         }
 
         stepBudget += frameDt * TARGET_SPS;
+        // Cap accumulated debt so that a long pause (tab hidden, slow frame,
+        // CPU throttle) doesn't leave the loop saturated at max catch-up rate
+        // forever — drop the old debt and resume normal pacing.
+        if (stepBudget > 8) stepBudget = 8;
         let toRun = Math.floor(stepBudget);
-        if (toRun > 8) toRun = 8;
         stepBudget -= toRun;
 
-        for (let i = 0; i < toRun; i++) {
-            applyZDrift();
-            rebuildCond();
-            await runStep();
+        try {
+            for (let i = 0; i < toRun; i++) {
+                applyZDrift();
+                rebuildCond();
+                await runStep();
+            }
+        } catch (err) {
+            console.error("NCA step failed:", err);
         }
 
         render();
@@ -740,6 +756,13 @@ import PageHeader from '../components/PageHeader.astro';
 
         document.getElementById("debug-btn").addEventListener("click", toggleDebug);
         window.addEventListener("focus", buildPalette);
+
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") {
+                lastFrameT = 0;
+                stepBudget = 0;
+            }
+        });
 
         lastStatsT = performance.now();
         requestAnimationFrame(loop);
