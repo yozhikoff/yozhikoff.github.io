@@ -1,0 +1,767 @@
+---
+import Layout from '../layouts/Layout.astro';
+import PageHeader from '../components/PageHeader.astro';
+---
+
+<Layout title="NCA Clock" description="A neural cellular automaton clock — each digit is a tiny 32×32 grid that regrows itself in real time">
+    <PageHeader />
+    <main class="mx-auto px-0 sm:px-2 py-4" style="max-width: 100%; overflow-x: hidden;">
+        <h1 class="text-3xl font-bold mb-6 text-center">NCA Clock</h1>
+
+        <div class="clock-stage">
+            <div class="clock-card">
+                <div id="clock">
+                    <canvas id="d0"></canvas>
+                    <canvas id="d1"></canvas>
+                    <span class="sep">:</span>
+                    <canvas id="d2"></canvas>
+                    <canvas id="d3"></canvas>
+                    <span class="sep">:</span>
+                    <canvas id="d4"></canvas>
+                    <canvas id="d5"></canvas>
+                </div>
+            </div>
+
+            <div class="debug-row">
+                <button id="debug-btn" class="debug-btn" aria-label="Toggle debug overlay">debug</button>
+                <div id="debug-overlay" class="debug-overlay"></div>
+            </div>
+
+            <div id="z-pad-wrap" class="z-pad-wrap">
+                <div class="z-pad-labels">
+                    <span class="z-pad-label">Style</span>
+                    <button id="z-pad-reset" class="z-pad-reset" title="Return to automatic drift">auto</button>
+                </div>
+                <div id="z-pad">
+                    <div id="z-dot"></div>
+                </div>
+                <p class="z-pad-hint">Drag to steer the style</p>
+            </div>
+        </div>
+
+        <div class="explanation-text">
+            <p>
+                Have you ever experienced nostalgia for analog watches when looking at their digital twin in the corner of your screen? Ever missed the charming complexity of a meticulously crafted, perfect mechanism?
+            </p>
+            <p>
+                Look no further - NCA-Clock has you covered! Unlike the soulless, hard-coded transitions seen in most digital watch faces, the transitions here happen naturally, through a self-guiding <a href="https://distill.pub/2020/growing-ca/" target="_blank" rel="noopener" class="link">neural cellular automaton</a>. Inference runs right in your browser and is randomised, so you can be sure that your NCA-Clock is entirely unique.
+            </p>
+            <p>
+                And if you want to further refine it to your taste, use the style pad to make the digits look exactly the way you like - or keep the default option and enjoy the full diversity of the style space! But don't feel you have to tweak it just to match your own sense of style!
+            </p>
+        </div>
+    </main>
+</Layout>
+
+<style>
+    /* ── Clock palette (scoped via variables on .clock-stage) ─────── */
+    .clock-stage {
+        --clock-bg:        #1e1b4b;
+        --clock-digit-off: #1e1b4b;
+        --clock-digit-on:  #eef2ff;
+        --clock-accent:    #c7d2fe;
+        --clock-border:    rgba(165, 180, 252, 0.25);
+        --clock-glow:      rgba(129, 140, 248, 0.3);
+
+        max-width: 760px;
+        margin: 0 auto 0.25rem auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.35rem;
+    }
+
+    .clock-card {
+        position: relative;
+        width: 100%;
+        background: var(--clock-bg);
+        border: 1px solid var(--clock-border);
+        border-radius: 14px;
+        padding: clamp(1.25rem, 3.5vw, 2rem) clamp(0.75rem, 2vw, 1.25rem);
+        box-shadow:
+            0 0 0 1px rgba(99, 102, 241, 0.08) inset,
+            0 0 90px -30px var(--clock-glow) inset;
+    }
+
+    #clock {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 2%;
+        width: 100%;
+    }
+
+    #clock canvas {
+        flex: 1 1 0;
+        min-width: 0;
+        aspect-ratio: 1 / 1;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        display: block;
+    }
+
+    #clock .sep {
+        flex: 0 0 auto;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-size: clamp(1.75rem, 7vw, 3.25rem);
+        line-height: 0.65;
+        color: var(--clock-accent);
+        user-select: none;
+        padding-bottom: 0.4rem;
+        opacity: 0.8;
+    }
+
+    /* ── z-pad ───────────────────────────────────────────────────── */
+    .z-pad-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .z-pad-labels {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .z-pad-label {
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: #6b7280;
+    }
+
+    .z-pad-reset {
+        font-size: 0.65rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: #9ca3af;
+        background: transparent;
+        border: 1px solid #e5e7eb;
+        border-radius: 4px;
+        padding: 2px 8px;
+        cursor: pointer;
+        transition: color 0.15s, border-color 0.15s;
+    }
+
+    .z-pad-reset:hover {
+        color: #4f46e5;
+        border-color: #c7d2fe;
+    }
+
+    #z-pad {
+        width: 144px;
+        height: 144px;
+        background-color: #f9fafb;
+        background-image:
+            radial-gradient(
+                circle 42px at var(--dot-x, 50%) var(--dot-y, 50%),
+                rgba(79, 70, 229, 0.16) 0%,
+                rgba(79, 70, 229, 0.05) 55%,
+                transparent 100%
+            ),
+            radial-gradient(circle, #c7d2fe 1px, transparent 1.4px);
+        background-size: 100% 100%, 12px 12px;
+        background-position: 0 0, 0 0;
+        background-repeat: no-repeat, repeat;
+        background-origin: border-box, border-box;
+        background-clip: padding-box, padding-box;
+        border: 1px solid #aab5ee;
+        border-radius: 10px;
+        position: relative;
+        cursor: crosshair;
+        touch-action: none;
+        transition: border-color 0.15s, box-shadow 0.15s;
+        box-shadow: 0 1px 3px rgba(79, 70, 229, 0.06);
+    }
+
+    #z-pad::before,
+    #z-pad::after {
+        content: "";
+        position: absolute;
+        background: rgba(99, 102, 241, 0.16);
+        pointer-events: none;
+        z-index: 0;
+    }
+
+    #z-pad::before { left: 0; right: 0; top: 50%; height: 1px; transform: translateY(-0.5px); }
+    #z-pad::after  { top: 0; bottom: 0; left: 50%; width: 1px; transform: translateX(-0.5px); }
+
+    #z-pad:hover,
+    .z-pad-wrap.active #z-pad {
+        border-color: #a5b4fc;
+        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.12);
+    }
+
+    #z-dot {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 14px;
+        height: 14px;
+        background: #6366f1;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        box-shadow: 0 0 14px rgba(99, 102, 241, 0.7);
+        z-index: 2;
+    }
+
+    .z-pad-wrap.active #z-dot {
+        background: #4f46e5;
+        box-shadow: 0 0 18px rgba(79, 70, 229, 0.8);
+    }
+
+    .z-pad-hint {
+        font-size: 0.7rem;
+        color: #9ca3af;
+        margin: 0;
+    }
+
+    /* ── Debug ───────────────────────────────────────────────────── */
+    .debug-row {
+        position: relative;
+        width: 100%;
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    .debug-btn {
+        background: transparent;
+        color: #9ca3af;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-size: 10px;
+        padding: 3px 8px;
+        cursor: pointer;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        transition: color 0.15s, border-color 0.15s;
+    }
+
+    .debug-btn:hover,
+    .debug-btn.on {
+        color: #4f46e5;
+        border-color: #c7d2fe;
+    }
+
+    .debug-overlay {
+        position: absolute;
+        top: calc(100% + 6px);
+        right: 0;
+        background: #1e1b4b;
+        border: 1px solid rgba(165, 180, 252, 0.25);
+        border-radius: 4px;
+        color: #c7d2fe;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-size: 10px;
+        padding: 8px 12px;
+        line-height: 1.55;
+        white-space: pre;
+        display: none;
+        min-width: 160px;
+        pointer-events: none;
+        box-shadow: 0 8px 20px -12px rgba(30, 27, 75, 0.4);
+        z-index: 5;
+    }
+
+    .debug-overlay.on { display: block; }
+
+    /* ── Explanation ─────────────────────────────────────────────── */
+    .explanation-text {
+        background-color: #f8fafc;
+        padding: 22px 24px;
+        border-radius: 10px;
+        margin: 0.75rem auto 1rem auto;
+        max-width: 720px;
+        line-height: 1.65;
+        font-size: 15px;
+        color: #374151;
+    }
+
+    .explanation-text p {
+        margin-bottom: 0.9rem;
+    }
+
+    .explanation-text p:last-child {
+        margin-bottom: 0;
+    }
+
+    .explanation-text .link {
+        color: #4f46e5;
+        text-decoration: underline;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 2px;
+        transition: color 0.15s;
+    }
+
+    .explanation-text .link:hover {
+        color: #3730a3;
+    }
+
+    /* ── Responsive ──────────────────────────────────────────────── */
+    @media (max-width: 640px) {
+        .explanation-text {
+            padding: 14px;
+            margin: 1.5rem 0 1rem 0;
+            border-radius: 6px;
+            font-size: 14.5px;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .clock-stage {
+            max-width: 100%;
+        }
+        .clock-card {
+            padding: 1rem 0.5rem;
+            border-radius: 10px;
+        }
+        #clock .sep {
+            font-size: clamp(1.25rem, 6vw, 2.5rem);
+        }
+        #z-pad {
+            width: 120px;
+            height: 120px;
+        }
+    }
+</style>
+
+<script is:inline src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.all.min.js"></script>
+<script is:inline>
+(function () {
+    // ── Tunables ──────────────────────────────────────────────────────
+    const MODEL_DIR       = "/nca-clock/dev2_ch10_h96";
+    const MNIST_SEEDS_URL = "/nca-clock/mnist_seeds.json";
+    const TARGET_SPS      = 60;
+    const DRIFT           = 0.5;
+    const INTERP          = true;
+    const Z_CHANGE_EVERY  = 70;
+    const FIRE_RATE       = 0.5;
+    const GRID            = 32;
+    const N_DIGITS        = 6;
+    const FIRE_POOL_SIZE  = 64;
+
+    // ── State ─────────────────────────────────────────────────────────
+    let session = null;
+    let config = null;
+    let embeddings = null;
+    let mnistSeeds = null;
+    let state = null;
+    let condTensor = null;
+    let condBuf = null;
+    let firePool = [];
+    let firePoolIdx = 0;
+
+    let zVecs = [];
+    let zBasis1 = null, zBasis2 = null;
+    let zPadManual = false;
+    let zPadX = 0, zPadY = 0;
+    let zFrom = null, zTo = null, zInterpStep = 0, zStepCounter = 0;
+
+    let currentLabels = [0, 0, 0, 0, 0, 0];
+    let prevLabels    = [0, 0, 0, 0, 0, 0];
+
+    let stepAcc = 0;
+    let stepTimeAcc = 0;
+    let lastStatsT = 0;
+    let statsSps = 0, statsMs = 0, statsFps = 0;
+    let frameAcc = 0;
+    let totalSteps = 0;
+    let lastFrameT = 0;
+    let debugOn = false;
+    let paletteLUT = null;
+    let ctxs = [];
+    let imgDatas = [];
+    let stepBudget = 0;
+
+    // ── Utilities ─────────────────────────────────────────────────────
+    function gaussRand() {
+        const u1 = Math.random(), u2 = Math.random();
+        return Math.sqrt(-2 * Math.log(u1 || 1e-10)) * Math.cos(2 * Math.PI * u2);
+    }
+    function sampleZ(Z) {
+        const z = new Float32Array(Z);
+        for (let i = 0; i < Z; i++) z[i] = gaussRand();
+        return z;
+    }
+    function makeZBasis(Z) {
+        const v1 = sampleZ(Z);
+        let n = 0; for (let i = 0; i < Z; i++) n += v1[i] * v1[i];
+        n = Math.sqrt(n); for (let i = 0; i < Z; i++) v1[i] /= n;
+        const v2 = sampleZ(Z);
+        let dot = 0; for (let i = 0; i < Z; i++) dot += v1[i] * v2[i];
+        for (let i = 0; i < Z; i++) v2[i] -= dot * v1[i];
+        n = 0; for (let i = 0; i < Z; i++) n += v2[i] * v2[i];
+        n = Math.sqrt(n); for (let i = 0; i < Z; i++) v2[i] /= n;
+        return [v1, v2];
+    }
+    function zFromPad(Z) {
+        const z = new Float32Array(Z);
+        const SCALE = 2.0;
+        for (let i = 0; i < Z; i++) {
+            z[i] = SCALE * (zPadX * zBasis1[i] + zPadY * zBasis2[i]);
+        }
+        return z;
+    }
+    function updateLabelsFromTime() {
+        const now = new Date();
+        const h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
+        currentLabels[0] = Math.floor(h / 10);
+        currentLabels[1] = h % 10;
+        currentLabels[2] = Math.floor(m / 10);
+        currentLabels[3] = m % 10;
+        currentLabels[4] = Math.floor(s / 10);
+        currentLabels[5] = s % 10;
+    }
+
+    // ── State init ────────────────────────────────────────────────────
+    function initState() {
+        const C = config.channel_n;
+        const SP = GRID * GRID;
+        const buf = new Float32Array(N_DIGITS * C * SP);
+        for (let d = 0; d < N_DIGITS; d++) {
+            const digit = currentLabels[d];
+            const samples = mnistSeeds[String(digit)];
+            const sample = samples[Math.floor(Math.random() * samples.length)];
+            const visOff = d * C * SP + (C - 1) * SP;
+            for (let r = 0; r < GRID; r++)
+                for (let c = 0; c < GRID; c++)
+                    buf[visOff + r * GRID + c] = sample[r][c];
+        }
+        return buf;
+    }
+    function initFirePool() {
+        const SP = GRID * GRID;
+        firePool = [];
+        for (let i = 0; i < FIRE_POOL_SIZE; i++) {
+            const buf = new Float32Array(N_DIGITS * SP);
+            for (let j = 0; j < buf.length; j++) buf[j] = Math.random() < FIRE_RATE ? 1 : 0;
+            firePool.push(new ort.Tensor("float32", buf, [N_DIGITS, 1, GRID, GRID]));
+        }
+    }
+    function rebuildCond() {
+        const E = config.class_embed_dim;
+        const Z = config.z_dim;
+        const cd = E + Z;
+        for (let d = 0; d < N_DIGITS; d++) {
+            const off = d * cd;
+            const emb = embeddings[currentLabels[d]];
+            for (let i = 0; i < E; i++) condBuf[off + i] = emb[i];
+            const z = zVecs[d];
+            for (let i = 0; i < Z; i++) condBuf[off + E + i] = z[i];
+        }
+    }
+
+    // ── z drift ───────────────────────────────────────────────────────
+    function applyZDrift() {
+        if (!zVecs.length || config.z_dim === 0) return;
+        const Z = config.z_dim;
+
+        if (zPadManual) {
+            const zShared = zFromPad(Z);
+            for (let d = 0; d < N_DIGITS; d++) zVecs[d].set(zShared);
+            return;
+        }
+
+        zStepCounter++;
+
+        if (INTERP && zTo) {
+            zInterpStep++;
+            const t = Math.min(zInterpStep / Z_CHANGE_EVERY, 1.0);
+            for (let d = 0; d < N_DIGITS; d++) {
+                const z = zVecs[d];
+                for (let i = 0; i < Z; i++) z[i] = zFrom[d][i] * (1 - t) + zTo[d][i] * t;
+            }
+            if (zInterpStep >= Z_CHANGE_EVERY) zTo = null;
+            return;
+        }
+
+        if (zStepCounter % Z_CHANGE_EVERY !== 0) return;
+
+        const keep = Math.sqrt(1 - DRIFT);
+        const fresh = Math.sqrt(DRIFT);
+        if (INTERP) {
+            zFrom = zVecs.map(z => new Float32Array(z));
+            zTo = zVecs.map(z => {
+                const target = new Float32Array(Z);
+                for (let i = 0; i < Z; i++) target[i] = keep * z[i] + fresh * gaussRand();
+                return target;
+            });
+            zInterpStep = 0;
+        } else {
+            for (let d = 0; d < N_DIGITS; d++) {
+                const z = zVecs[d];
+                for (let i = 0; i < Z; i++) z[i] = keep * z[i] + fresh * gaussRand();
+            }
+        }
+    }
+
+    function handleTransitions() {
+        if (config.z_dim === 0 || zPadManual) return;
+        for (let d = 0; d < N_DIGITS; d++) {
+            if (currentLabels[d] !== prevLabels[d]) {
+                zVecs[d] = sampleZ(config.z_dim);
+            }
+        }
+    }
+
+    // ── Palette (read from scoped CSS vars) ───────────────────────────
+    function parseHex(hex) {
+        hex = hex.trim().replace(/^#/, "");
+        if (hex.length === 3) hex = hex.split("").map(c => c + c).join("");
+        return [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
+    }
+    function parseCssColor(s) {
+        s = s.trim();
+        if (s.startsWith("#")) return parseHex(s);
+        const m = s.match(/rgb\s*\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i);
+        if (m) return [parseInt(m[1]), parseInt(m[2]), parseInt(m[3])];
+        return [0, 0, 0];
+    }
+    function buildPalette() {
+        const stage = document.querySelector(".clock-stage");
+        const cs = getComputedStyle(stage);
+        const off = parseCssColor(cs.getPropertyValue("--clock-digit-off"));
+        const on  = parseCssColor(cs.getPropertyValue("--clock-digit-on"));
+        const lut = new Uint8Array(256 * 3);
+        for (let i = 0; i < 256; i++) {
+            const t = i / 255;
+            lut[i * 3 + 0] = Math.round(off[0] + (on[0] - off[0]) * t);
+            lut[i * 3 + 1] = Math.round(off[1] + (on[1] - off[1]) * t);
+            lut[i * 3 + 2] = Math.round(off[2] + (on[2] - off[2]) * t);
+        }
+        paletteLUT = lut;
+    }
+
+    // ── Render ────────────────────────────────────────────────────────
+    function initCanvases() {
+        ctxs = []; imgDatas = [];
+        for (let d = 0; d < N_DIGITS; d++) {
+            const cv = document.getElementById("d" + d);
+            cv.width = GRID; cv.height = GRID;
+            const c = cv.getContext("2d");
+            ctxs.push(c);
+            imgDatas.push(c.createImageData(GRID, GRID));
+        }
+    }
+    function render() {
+        const C = config.channel_n;
+        const SP = GRID * GRID;
+        for (let d = 0; d < N_DIGITS; d++) {
+            const img = imgDatas[d].data;
+            const visOff = d * C * SP + (C - 1) * SP;
+            for (let i = 0; i < SP; i++) {
+                const v = state[visOff + i];
+                let t = (v + 1) * 0.5;
+                if (t < 0) t = 0; else if (t > 1) t = 1;
+                t = Math.pow(t, 1.6);
+                const idx = Math.round(t * 255);
+                const p = idx * 3;
+                const o = i * 4;
+                img[o + 0] = paletteLUT[p + 0];
+                img[o + 1] = paletteLUT[p + 1];
+                img[o + 2] = paletteLUT[p + 2];
+                img[o + 3] = 255;
+            }
+            ctxs[d].putImageData(imgDatas[d], 0, 0);
+        }
+    }
+
+    // ── Inference step ────────────────────────────────────────────────
+    async function runStep() {
+        const t0 = performance.now();
+        const feeds = {
+            x: new ort.Tensor("float32", state, [N_DIGITS, config.channel_n, GRID, GRID]),
+            fire_mask: firePool[firePoolIdx++ % FIRE_POOL_SIZE],
+            cond_vec: condTensor,
+        };
+        const r = await session.run(feeds);
+        state = r.new_x.data;
+        const dt = performance.now() - t0;
+        stepAcc++; stepTimeAcc += dt; totalSteps++;
+    }
+
+    // ── Main loop ─────────────────────────────────────────────────────
+    async function loop(nowT) {
+        if (!lastFrameT) lastFrameT = nowT;
+        const frameDt = (nowT - lastFrameT) / 1000;
+        lastFrameT = nowT;
+        frameAcc++;
+
+        const prevLabelsCopy = currentLabels.slice();
+        updateLabelsFromTime();
+        let labelsChanged = false;
+        for (let d = 0; d < N_DIGITS; d++) {
+            if (currentLabels[d] !== prevLabelsCopy[d]) { labelsChanged = true; break; }
+        }
+        if (labelsChanged) {
+            prevLabels = prevLabelsCopy;
+            handleTransitions();
+        }
+
+        stepBudget += frameDt * TARGET_SPS;
+        let toRun = Math.floor(stepBudget);
+        if (toRun > 8) toRun = 8;
+        stepBudget -= toRun;
+
+        for (let i = 0; i < toRun; i++) {
+            applyZDrift();
+            rebuildCond();
+            await runStep();
+        }
+
+        render();
+
+        if (nowT - lastStatsT >= 500) {
+            const windowS = (nowT - lastStatsT) / 1000;
+            statsSps = stepAcc / windowS;
+            statsMs  = stepAcc > 0 ? (stepTimeAcc / stepAcc) : 0;
+            statsFps = frameAcc / windowS;
+            stepAcc = 0; stepTimeAcc = 0; frameAcc = 0; lastStatsT = nowT;
+            if (debugOn) updateDebugOverlay();
+        }
+
+        requestAnimationFrame(loop);
+    }
+
+    // ── Debug ─────────────────────────────────────────────────────────
+    function updateDebugOverlay() {
+        const el = document.getElementById("debug-overlay");
+        const labels = currentLabels.join("");
+        const timeStr = labels.slice(0, 2) + ":" + labels.slice(2, 4) + ":" + labels.slice(4, 6);
+        const zMode = zPadManual ? "manual (pad)" : "drift=" + DRIFT + " interp=" + (INTERP ? "on" : "off");
+        el.textContent =
+            "model   dev2_ch10_h96\n" +
+            "backend wasm\n" +
+            "sps     " + statsSps.toFixed(1) + "  (target " + TARGET_SPS + ")\n" +
+            "step    " + statsMs.toFixed(2) + " ms\n" +
+            "fps     " + statsFps.toFixed(1) + "\n" +
+            "total   " + totalSteps + "\n" +
+            "time    " + timeStr + "\n" +
+            "z       " + zMode;
+    }
+    function toggleDebug() {
+        debugOn = !debugOn;
+        document.getElementById("debug-btn").classList.toggle("on", debugOn);
+        document.getElementById("debug-overlay").classList.toggle("on", debugOn);
+        if (debugOn) updateDebugOverlay();
+    }
+
+    // ── z-pad wiring ──────────────────────────────────────────────────
+    function initZPad() {
+        const pad = document.getElementById("z-pad");
+        const dot = document.getElementById("z-dot");
+        const wrap = document.getElementById("z-pad-wrap");
+        const resetBtn = document.getElementById("z-pad-reset");
+
+        function setFromEvent(e) {
+            const r = pad.getBoundingClientRect();
+            const pt = e.touches ? e.touches[0] : e;
+            let x = (pt.clientX - r.left) / r.width;
+            let y = (pt.clientY - r.top)  / r.height;
+            x = Math.max(0, Math.min(1, x));
+            y = Math.max(0, Math.min(1, y));
+            zPadX = x * 2 - 1;
+            zPadY = y * 2 - 1;
+            const xp = (x * 100) + "%";
+            const yp = (y * 100) + "%";
+            dot.style.left = xp;
+            dot.style.top  = yp;
+            pad.style.setProperty("--dot-x", xp);
+            pad.style.setProperty("--dot-y", yp);
+            zPadManual = true;
+            wrap.classList.add("active");
+        }
+
+        let dragging = false;
+        const onDown = e => { dragging = true; setFromEvent(e); e.preventDefault(); };
+        const onMove = e => { if (dragging) { setFromEvent(e); e.preventDefault(); } };
+        const onUp   = () => { dragging = false; };
+
+        pad.addEventListener("mousedown", onDown);
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+        pad.addEventListener("touchstart", onDown, { passive: false });
+        window.addEventListener("touchmove", onMove, { passive: false });
+        window.addEventListener("touchend", onUp);
+
+        function releaseManual() {
+            zPadManual = false;
+            zPadX = 0; zPadY = 0;
+            dot.style.left = "50%"; dot.style.top = "50%";
+            pad.style.setProperty("--dot-x", "50%");
+            pad.style.setProperty("--dot-y", "50%");
+            wrap.classList.remove("active");
+            for (let d = 0; d < N_DIGITS; d++) zVecs[d] = sampleZ(config.z_dim);
+        }
+
+        resetBtn.addEventListener("click", releaseManual);
+        pad.addEventListener("dblclick", releaseManual);
+    }
+
+    // ── Boot ──────────────────────────────────────────────────────────
+    async function init() {
+        const [cfgResp, embResp, seedResp] = await Promise.all([
+            fetch(MODEL_DIR + "/config.json"),
+            fetch(MODEL_DIR + "/class_embeddings.json"),
+            fetch(MNIST_SEEDS_URL),
+        ]);
+        config = await cfgResp.json();
+        embeddings = await embResp.json();
+        mnistSeeds = await seedResp.json();
+
+        session = await ort.InferenceSession.create(MODEL_DIR + "/nca_sparse.onnx", {
+            executionProviders: ["wasm"],
+            graphOptimizationLevel: "all",
+        });
+
+        for (let d = 0; d < N_DIGITS; d++) zVecs.push(sampleZ(config.z_dim));
+        const basis = makeZBasis(config.z_dim);
+        zBasis1 = basis[0]; zBasis2 = basis[1];
+
+        updateLabelsFromTime();
+        prevLabels = currentLabels.slice();
+        state = initState();
+        initFirePool();
+
+        const cd = config.class_embed_dim + config.z_dim;
+        condBuf = new Float32Array(N_DIGITS * cd);
+        condTensor = new ort.Tensor("float32", condBuf, [N_DIGITS, cd]);
+        rebuildCond();
+
+        buildPalette();
+        initCanvases();
+        initZPad();
+
+        document.getElementById("debug-btn").addEventListener("click", toggleDebug);
+        window.addEventListener("focus", buildPalette);
+
+        lastStatsT = performance.now();
+        requestAnimationFrame(loop);
+    }
+
+    function boot() {
+        if (typeof ort === "undefined") {
+            setTimeout(boot, 50);
+            return;
+        }
+        init().catch(e => {
+            console.error(e);
+            const el = document.getElementById("debug-overlay");
+            el.classList.add("on");
+            el.textContent = "init failed:\n" + e.message;
+        });
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", boot);
+    } else {
+        boot();
+    }
+})();
+</script>
