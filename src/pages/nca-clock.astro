@@ -720,26 +720,57 @@ import PageHeader from '../components/PageHeader.astro';
         pad.addEventListener("dblclick", releaseManual);
     }
 
+    // ── Diagnostic helper ─────────────────────────────────────────────
+    async function diagStep(name, fn) {
+        console.log("[nca-clock] →", name);
+        const t0 = performance.now();
+        try {
+            const r = await fn();
+            console.log("[nca-clock] ✓", name, (performance.now() - t0).toFixed(0) + "ms");
+            return r;
+        } catch (e) {
+            console.error("[nca-clock] ✗", name, "after", (performance.now() - t0).toFixed(0) + "ms");
+            console.error("[nca-clock] error:", e && (e.message || e));
+            if (e && e.stack) console.error("[nca-clock] stack:", e.stack);
+            if (e && e.cause) console.error("[nca-clock] cause:", e.cause);
+            throw e;
+        }
+    }
+
     // ── Boot ──────────────────────────────────────────────────────────
     async function init() {
         // Pin wasmPaths explicitly — ORT's auto-detection of the .wasm binary
         // location is known to fail on some older Android Chrome / iOS Safari
         // versions, surfacing as a generic "no backend / OOM" error.
         ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.3/dist/";
+        ort.env.logLevel = "verbose";
 
-        const [cfgResp, embResp, seedResp] = await Promise.all([
+        console.log("[nca-clock] === diagnostic dump ===");
+        console.log("[nca-clock] UA:", navigator.userAgent);
+        console.log("[nca-clock] deviceMemory:", navigator.deviceMemory);
+        console.log("[nca-clock] hardwareConcurrency:", navigator.hardwareConcurrency);
+        console.log("[nca-clock] ort.version:", ort.version || "unknown");
+        try {
+            console.log("[nca-clock] ort.env.wasm:", JSON.stringify(ort.env.wasm));
+        } catch (_) {
+            console.log("[nca-clock] ort.env.wasm: (not stringifiable)");
+        }
+
+        const [cfgResp, embResp, seedResp] = await diagStep("fetch assets", () => Promise.all([
             fetch(MODEL_DIR + "/config.json"),
             fetch(MODEL_DIR + "/class_embeddings.json"),
             fetch(MNIST_SEEDS_URL),
-        ]);
-        config = await cfgResp.json();
-        embeddings = await embResp.json();
-        mnistSeeds = await seedResp.json();
+        ]));
+        config = await diagStep("parse config.json", () => cfgResp.json());
+        embeddings = await diagStep("parse class_embeddings.json", () => embResp.json());
+        mnistSeeds = await diagStep("parse mnist_seeds.json", () => seedResp.json());
 
-        session = await ort.InferenceSession.create(MODEL_DIR + "/nca_sparse.onnx", {
-            executionProviders: ["wasm"],
-            graphOptimizationLevel: "all",
-        });
+        session = await diagStep("create ONNX session", () =>
+            ort.InferenceSession.create(MODEL_DIR + "/nca_sparse.onnx", {
+                executionProviders: ["wasm"],
+                graphOptimizationLevel: "all",
+            })
+        );
 
         for (let d = 0; d < N_DIGITS; d++) zVecs.push(sampleZ(config.z_dim));
         const basis = makeZBasis(config.z_dim);
@@ -779,10 +810,11 @@ import PageHeader from '../components/PageHeader.astro';
             return;
         }
         init().catch(e => {
-            console.error(e);
+            console.error("[nca-clock] init rejected:", e);
+            if (e && e.stack) console.error("[nca-clock] init stack:", e.stack);
             const el = document.getElementById("debug-overlay");
             el.classList.add("on");
-            el.textContent = "init failed:\n" + e.message;
+            el.textContent = "init failed:\n" + (e && (e.message || e));
         });
     }
 
