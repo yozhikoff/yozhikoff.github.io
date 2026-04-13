@@ -4,6 +4,12 @@ import PageHeader from '../components/PageHeader.astro';
 ---
 
 <Layout title="NCA Clock" description="A neural cellular automaton clock - each digit is a tiny 32×32 grid that regrows itself in real time">
+    <Fragment slot="head">
+        <link rel="preload" as="fetch" href="/nca-clock/dev2_ch10_h96/nca_sparse.onnx" crossorigin="anonymous" />
+        <link rel="preload" as="fetch" href="/nca-clock/mnist_seeds.json" crossorigin="anonymous" />
+        <link rel="preload" as="fetch" href="/nca-clock/dev2_ch10_h96/config.json" crossorigin="anonymous" />
+        <link rel="preload" as="fetch" href="/nca-clock/dev2_ch10_h96/class_embeddings.json" crossorigin="anonymous" />
+    </Fragment>
     <PageHeader />
     <main class="mx-auto px-0 sm:px-2 py-4" style="max-width: 100%; overflow-x: hidden;">
         <h1 class="text-3xl font-bold mb-6 text-center">NCA Clock</h1>
@@ -37,6 +43,11 @@ import PageHeader from '../components/PageHeader.astro';
                 </div>
                 <p class="z-pad-hint">Drag to steer the style</p>
             </div>
+        </div>
+
+        <div id="error-card" class="error-card" role="alert" aria-live="polite">
+            <h3>Error</h3>
+            <pre id="error-details"></pre>
         </div>
 
         <div class="explanation-text">
@@ -270,6 +281,43 @@ import PageHeader from '../components/PageHeader.astro';
     }
 
     .debug-overlay.on { display: block; }
+
+    /* ── Error card ──────────────────────────────────────────────── */
+    .error-card {
+        display: none;
+        background-color: #f8fafc;
+        border: 1px solid #e0e7ff;
+        border-radius: 10px;
+        padding: 16px 20px;
+        margin: 1rem auto 1.5rem auto;
+        max-width: 720px;
+        color: #374151;
+        font-size: 14px;
+    }
+
+    .error-card.on { display: block; }
+
+    .error-card h3 {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #b91c1c;
+        margin: 0 0 0.5rem 0;
+    }
+
+    .error-card pre {
+        background: #1e1b4b;
+        color: #c7d2fe;
+        padding: 12px;
+        border-radius: 4px;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-size: 11px;
+        line-height: 1.5;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        margin: 0;
+        user-select: all;
+    }
 
     /* ── Explanation ─────────────────────────────────────────────── */
     .explanation-text {
@@ -743,6 +791,11 @@ import PageHeader from '../components/PageHeader.astro';
         // location is known to fail on some older Android Chrome / iOS Safari
         // versions, surfacing as a generic "no backend / OOM" error.
         ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.3/dist/";
+        // Force single-threaded WASM. Without COOP/COEP headers (not available
+        // on GitHub Pages), SharedArrayBuffer is unavailable and ORT falls back
+        // anyway — but making it explicit skips the "try threaded, fail, retry"
+        // init path that can misbehave on older Safari.
+        ort.env.wasm.numThreads = 1;
         ort.env.logLevel = "verbose";
 
         console.log("[nca-clock] === diagnostic dump ===");
@@ -804,6 +857,22 @@ import PageHeader from '../components/PageHeader.astro';
         requestAnimationFrame(loop);
     }
 
+    function showErrorCard(err) {
+        const card = document.getElementById("error-card");
+        const details = document.getElementById("error-details");
+        if (!card || !details) return;
+        const lines = [
+            (err && err.name ? err.name + ": " : "") + (err && err.message ? err.message : String(err)),
+        ];
+        if (err && err.stack) lines.push("", err.stack);
+        if (err && err.cause) lines.push("", "Cause: " + (err.cause.message || String(err.cause)));
+        lines.push("", "UA: " + navigator.userAgent);
+        lines.push("deviceMemory: " + navigator.deviceMemory);
+        lines.push("ort.version: " + (typeof ort !== "undefined" ? (ort.version || "unknown") : "not loaded"));
+        details.textContent = lines.join("\n");
+        card.classList.add("on");
+    }
+
     function boot() {
         if (typeof ort === "undefined") {
             setTimeout(boot, 50);
@@ -812,9 +881,7 @@ import PageHeader from '../components/PageHeader.astro';
         init().catch(e => {
             console.error("[nca-clock] init rejected:", e);
             if (e && e.stack) console.error("[nca-clock] init stack:", e.stack);
-            const el = document.getElementById("debug-overlay");
-            el.classList.add("on");
-            el.textContent = "init failed:\n" + (e && (e.message || e));
+            try { showErrorCard(e); } catch (_) {}
         });
     }
 
