@@ -331,7 +331,7 @@ import PageHeader from '../components/PageHeader.astro';
     }
 </style>
 
-<script is:inline src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.all.min.js"></script>
+<script is:inline src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.3/dist/ort.min.js"></script>
 <script is:inline>
 (function () {
     // ── Tunables ──────────────────────────────────────────────────────
@@ -722,6 +722,11 @@ import PageHeader from '../components/PageHeader.astro';
 
     // ── Boot ──────────────────────────────────────────────────────────
     async function init() {
+        // Pin wasmPaths explicitly — ORT's auto-detection of the .wasm binary
+        // location is known to fail on some older Android Chrome / iOS Safari
+        // versions, surfacing as a generic "no backend / OOM" error.
+        ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.3/dist/";
+
         const [cfgResp, embResp, seedResp] = await Promise.all([
             fetch(MODEL_DIR + "/config.json"),
             fetch(MODEL_DIR + "/class_embeddings.json"),
